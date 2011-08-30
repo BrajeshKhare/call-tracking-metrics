@@ -10,7 +10,7 @@ Author URI: http://calltrackingmetrics.com/
 
 class CallTrackingMetrics {
   function CallTrackingMetrics() {
-		add_action('wp_print_scripts', array(&$this, "call_tracking_metrics_script"), 10);
+    add_action('wp_print_scripts', array(&$this, "call_tracking_metrics_script"), 10);
     add_action('admin_init', array(&$this, 'init_plugin'));
     add_action('admin_menu', array(&$this, 'attach_call_tracking_configuration'));
   }
@@ -21,7 +21,9 @@ class CallTrackingMetrics {
   }
 
   function call_tracking_metrics_script() {
-    echo get_option('call_track_account_script'); 
+    if (!is_admin()) {
+      echo get_option('call_track_account_script'); 
+    }
   }
 
   function attach_call_tracking_configuration() {
