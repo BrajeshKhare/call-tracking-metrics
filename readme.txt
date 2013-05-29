@@ -1,12 +1,12 @@
 === Call Tracking Metrics ===
-Contributors: Captico
+Contributors: CallTrackingMetrics
 Donate link: http://calltrackingmetrics.com/
-Tags: analytics, call tracking, marketing optimization
+Tags: analytics, call tracking, marketing optimization metrics
 Requires at least: 3.0.0
 Tested up to: 3.0.5
 Stable tag: 0.2
 
-Call Tracking Metrics WP plugin
+CallTrackingMetrics WP plugin
 
 == Description ==
 
@@ -14,7 +14,7 @@ Discover which marketing sources drive the most calls to your business!
 
 == Installation ==
 
-Call Tracking Metrics is easy to use just install the plugin and copy the
+CallTrackingMetrics is easy to use just install the plugin and copy the
 embed code into your plugin.  Once it's installed start up your marketing
 campaigns and you'll be able to discover your most effective marketing
 sources.
