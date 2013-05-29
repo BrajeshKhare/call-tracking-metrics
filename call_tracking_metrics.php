@@ -4,7 +4,7 @@ Plugin Name: Call Tracking Metrics
 Plugin URI: http://calltrackingmetrics.com/
 Description: Easily manage and track incoming phone calls to your website with Call Tracking Metrics
 Author: Andrew Hunter, Jonathan Phillips and Todd Fisher
-Version: 0.3.2
+Version: 0.3.4
 Author URI: http://calltrackingmetrics.com/
 */
 
@@ -13,7 +13,7 @@ class CallTrackingMetrics {
     add_action('wp_print_scripts', array(&$this, "call_tracking_metrics_script"), 10);
     add_action('admin_init', array(&$this, 'init_plugin'));
     add_action('admin_menu', array(&$this, 'attach_call_tracking_configuration'));
-    $this->ctm_host = "ctmdev.co";
+    $this->ctm_host = "calltrackingmetrics.com";
   }
 
   function init_plugin() {
@@ -142,7 +142,7 @@ class CallTrackingMetrics {
  // $ed = date('Y-m-d');
  // $sd = date('Y-m-d', strtotime('-7 days'));
 
-    $stats_url = "http://{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
+    $stats_url = "https://{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
     error_log($stats_url);
 
     $req = new WP_Http;
@@ -165,7 +165,7 @@ class CallTrackingMetrics {
     }
   }
   function refresh_token($ctm_api_key, $ctm_api_secret) {
-    $url = "http://{$this->ctm_host}/api/v1/authentication.json";
+    $url = "https://{$this->ctm_host}/api/v1/authentication.json";
     $args = array("token" => $ctm_api_key, "secret" => $ctm_api_secret);
     $req = new WP_Http;//wp_remote_post($url, $args);
     $res = $req->request($url, array('method' => 'POST', 'body' => $args));
