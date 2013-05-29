@@ -4,7 +4,7 @@ Plugin Name: Call Tracking Metrics
 Plugin URI: http://calltrackingmetrics.com/
 Description: Easily manage and track incoming phone calls to your website with Call Tracking Metrics
 Author: Andrew Hunter, Jonathan Phillips and Todd Fisher
-Version: 0.3.1
+Version: 0.3.2
 Author URI: http://calltrackingmetrics.com/
 */
 
@@ -160,9 +160,7 @@ class CallTrackingMetrics {
 
     if (!$ctm_api_auth_token && $ctm_api_secret && $ctm_api_key) {
       $this->refresh_token($ctm_api_key, $ctm_api_secret);
-    } elseif (isset($ctm_api_auth_token) &&
-               isset($ctm_api_auth_expires) &&
-               strtotime($ctm_api_auth_expires) < time()) {
+    } elseif ($ctm_api_auth_token && $ctm_api_auth_expires && strtotime($ctm_api_auth_expires) < time()) {
       $this->refresh_token($ctm_api_key, $ctm_api_secret);
     }
   }

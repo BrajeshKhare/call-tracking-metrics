@@ -4,7 +4,7 @@ Donate link: http://calltrackingmetrics.com/
 Tags: analytics, call tracking, marketing optimization metrics
 Requires at least: 3.0.0
 Tested up to: 3.5.1
-Stable tag: 0.3.1
+Stable tag: 0.3.2
 
 CallTrackingMetrics WP plugin
 
@@ -34,6 +34,9 @@ The plugin settings page can be found under "Settings" ->
 * Discover which marketing sources provide the best ROI
 
 == Changelog ==
+
+= 0.3.2 =
+* minior update to handle no api keys better
 
 = 0.3.1 =
 * version bump
