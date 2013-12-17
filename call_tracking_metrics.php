@@ -37,7 +37,7 @@ class CallTrackingMetrics {
     global $parent_file;
 
     if ( $parent_file == 'index.php') {
-      echo '"<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/2.3.5/highcharts.js"></script>';
+      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/3.0.2/highcharts.js"></script>';
       //echo '<script src="http://code.highcharts.com/3.0.1/highcharts.js"></script>';
       echo '<script src="//cdnjs.cloudflare.com/ajax/libs/mustache.js/0.7.2/mustache.min.js"></script>';
     }
