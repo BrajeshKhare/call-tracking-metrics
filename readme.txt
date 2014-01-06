@@ -10,6 +10,12 @@ CallTrackingMetrics WP plugin
 
 == Description ==
 
+Call Tracking with CallTrackingMetrics provides the most detailed information
+possible about who is calling from which advertising channel.  
+
+We provide a built-in easy to use WordPress dashboard widget showing you call
+volumn by day.
+
 Discover which marketing sources drive the most calls to your business!
 
 == Installation ==
