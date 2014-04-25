@@ -147,9 +147,13 @@ class CallTrackingMetrics {
 
     $req = new WP_Http;
     $res = $req->request($stats_url, array('method' => 'GET'));
-    $stats = $res['body'];
-    update_option("ctm_api_stats", json_decode($stats));
-    update_option("ctm_api_stats_expires", date('Y-m-d H:i:s', strtotime('+10 minutes')));
+    if (isset($res) && is_array($res)) {
+      $stats = $res['body'];
+      if (isset($stats)) {
+        update_option("ctm_api_stats", json_decode($stats));
+        update_option("ctm_api_stats_expires", date('Y-m-d H:i:s', strtotime('+10 minutes')));
+      }
+    }
   }
 
   function check_token() {
