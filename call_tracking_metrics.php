@@ -4,7 +4,7 @@ Plugin Name: Call Tracking Metrics
 Plugin URI: http://calltrackingmetrics.com/
 Description: Easily manage and track incoming phone calls to your website with Call Tracking Metrics
 Author: Andrew Hunter, Jonathan Phillips and Todd Fisher
-Version: 0.3.6
+Version: 0.3.7
 Author URI: http://calltrackingmetrics.com/
 */
 
@@ -37,8 +37,7 @@ class CallTrackingMetrics {
     global $parent_file;
 
     if ( $parent_file == 'index.php') {
-      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/3.0.2/highcharts.js"></script>';
-      //echo '<script src="http://code.highcharts.com/3.0.1/highcharts.js"></script>';
+      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/4.0.1/highcharts.js"></script>';
       echo '<script src="//cdnjs.cloudflare.com/ajax/libs/mustache.js/0.7.2/mustache.min.js"></script>';
     }
   }
@@ -50,8 +49,10 @@ class CallTrackingMetrics {
   }
 
   function attach_call_tracking_configuration() {
-    add_options_page('CallTrackingMetrics', 'CallTrackingMetrics', 'administrator', __FILE__, array(&$this,'settings_page'));
-    add_action('wp_dashboard_setup', array(&$this, 'install_dash_widget'));
+    if ( current_user_can( 'manage_options' ) ) {
+      add_options_page('CallTrackingMetrics', 'CallTrackingMetrics', 'administrator', __FILE__, array(&$this,'settings_page'));
+      add_action('wp_dashboard_setup', array(&$this, 'install_dash_widget'));
+    }
   }
 
   function install_dash_widget() {
