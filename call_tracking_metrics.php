@@ -144,7 +144,7 @@ class CallTrackingMetrics {
  // $sd = date('Y-m-d', strtotime('-7 days'));
 
     $stats_url = "https://{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
-    error_log($stats_url);
+    //error_log($stats_url);
 
     $req = new WP_Http;
     $res = $req->request($stats_url, array('method' => 'GET'));
