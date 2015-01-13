@@ -1,11 +1,11 @@
 <?php
 /*
 Plugin Name: Call Tracking Metrics
-Plugin URI: http://calltrackingmetrics.com/
-Description: Easily manage and track incoming phone calls to your website with Call Tracking Metrics
-Author: Andrew Hunter, Jonathan Phillips and Todd Fisher
-Version: 0.3.8
-Author URI: http://calltrackingmetrics.com/
+Plugin URI: https://calltrackingmetrics.com/
+Description: Easily manage and track phone calls to your website with Call Tracking Metrics
+Author: Todd Fisher, Bob Graw
+Version: 0.4.1
+Author URI: https://calltrackingmetrics.com/
 */
 
 class CallTrackingMetrics {
@@ -13,7 +13,16 @@ class CallTrackingMetrics {
     add_action('wp_print_scripts', array(&$this, "call_tracking_metrics_script"), 10);
     add_action('admin_init', array(&$this, 'init_plugin'));
     add_action('admin_menu', array(&$this, 'attach_call_tracking_configuration'));
-    $this->ctm_host = "calltrackingmetrics.com";
+    $this->ctm_host = "https://api.calltrackingmetrics.com";
+  }
+
+  // quick link in the plugin folder
+  function settings_link($links, $file) {
+    $plugin = plugin_basename(__FILE__);
+    if ( $file != $plugin) { return $links; }
+    $settings_link = '<a href="' . admin_url( 'options-general.php?page=ctm-plugin/call_tracking_metrics.php' ) . '">'  . esc_html( __( 'Settings', 'call-tracking-metrics' ) ) . '</a>';
+    array_unshift($links, $settings_link); 
+    return $links; 
   }
 
   function init_plugin() {
@@ -30,15 +39,157 @@ class CallTrackingMetrics {
     $this->check_token();
     $this->check_stats();
 
-    add_filter('admin_head', array(&$this, 'add_highcharts'));
+    add_filter('admin_head', array(&$this, 'add_javascripts'));
+    add_filter('plugin_action_links', array(&$this, 'settings_link'), 10, 2 );
+
+    // hook into contact form 7
+    add_filter('wpcf7_add_meta_boxes', array(&$this, 'add_contact_form7_options_panels'));
+    //add_action('load-toplevel_page_wpcf7', array(&$this, 'hook_into_contact_form7_actions'));
+    add_filter('wpcf7_save_contact_form', array(&$this, 'hook_wpcf7_save_contact_form'));
+    add_filter('wpcf7_contact_form_properties', array(&$this, 'hook_wpcf7_contact_form_properties'));
   }
 
-  function add_highcharts() {
+  function hook_wpcf7_contact_form_properties($properties) {
+    if (!isset($properties["ctm_formreactor"])) {
+      $properties["ctm_formreactor"] = array();
+    }
+    return $properties;
+  }
+
+  function hook_wpcf7_save_contact_form($contact_form) {
+    error_log("save with ctm:" . $contact_form->id);
+    ob_start();
+    var_dump($_POST);
+    $a=ob_get_contents();
+    ob_end_clean();
+    error_log("post fields: " . $a);
+    $ctm_caller_number_field = $contact_form->id . "-caller_number";
+    $ctm_formreactor_field   = $contact_form->id . "-formreactor";
+    $phone_field = $_POST[$ctm_caller_number_field];
+    $fromreactor = $_POST[$ctm_formreactor_field];
+    $properties = $contact_form->get_properties();
+    $properties["ctm_formreactor"]["phone_field"] = $phone_field;
+    $properties["ctm_formreactor"]["fromreactor"] = $fromreactor;
+    $contact_form->set_properties($properties);
+  }
+
+  function hook_into_contact_form7_actions() {
+    $action = wpcf7_current_action();
+
+    error_log('ctm-hook:' . $action . "]");
+    if ( 'save' == $action ) {
+    }
+    if ( 'copy' == $action ) {
+    }
+    if ( 'delete' == $action ) {
+    }
+  }
+
+  function add_contact_form7_options_panels($post_id) {
+    add_meta_box( "ctm_form_reactor", "CallTrackingMetrics FormReactor Settings", array(&$this, "show_contact_form7_panel"), null, "form", "low");
+  }
+
+  function show_contact_form7_panel($post) { 
+    $id = $post->id;
+    $fromreactor = $post->ctm_formreactor;
+?>
+    <div class="ctm-fields">
+      <div class="half-left">
+        <div class="ctm-field">
+          <label for="<?php echo $id; ?>-caller_number"><?php echo esc_html( __( 'Phone Number:', 'contact-form-7' ) ); ?></label><br />
+          <input placeholder="[your-phone-number]" type="text" id="<?php echo $id; ?>-caller_number" name="<?php echo $id; ?>-caller_number" class="wide" size="32" value="<?php echo esc_attr( $fromreactor['phone_field'] ); ?>" />
+          <cite>e.g. the field name used to capture the leads phone number</cite>
+        </div>
+        <div class="pseudo-hr"></div>
+        <div class="ctm-field">
+          <label for="<?php echo $id; ?>-formreactor"><?php echo esc_html( __( 'FormReactor', 'contact-form-7' ) ); ?></label><br />
+          <input type="text" id="<?php echo $id; ?>-formreactor" name="<?php echo $id; ?>-formreactor" class="wide formreactor" size="68" value="<?php echo esc_attr( $fromreactor['fromreactor'] ); ?>" />
+          <cite>the CallTrackingMetrics FormReactor to associate with this form.</cite>
+        </div>
+        <div class="pseudo-hr"></div>
+      </div>
+      <div class="half-right">
+        <p>
+          FormReactor integration allows you to use ContactForm7 and attach your form to a CallTrackingMetrics FormReactor call flow.  This allows you to capture form leads into your call log an optionally trigger a phone call either to a sales agent or to the customer filling out the form.
+        </p>
+        <p>
+          To configure the FormReactor integration you must capture the leads phone number as a required field.
+        </p>
+      </div>
+      <br class="clear" />
+    </div>
+<?php
+  }
+
+  function add_javascripts() {
     global $parent_file;
 
     if ( $parent_file == 'index.php') {
-      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/4.0.1/highcharts.js"></script>';
+      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/highcharts/4.0.4/highcharts.js"></script>';
       echo '<script src="//cdnjs.cloudflare.com/ajax/libs/mustache.js/0.7.2/mustache.min.js"></script>';
+    }
+    if ( $parent_file == 'wpcf7') {
+      $ctm_api_auth_token = $this->check_token();
+      echo '<link type="text/css" rel="stylesheet" media="all" href="//cdnjs.cloudflare.com/ajax/libs/select2/3.5.1/select2.min.css"/>';
+      echo '<script src="//cdnjs.cloudflare.com/ajax/libs/select2/3.5.1/select2.min.js"></script>';
+?>
+    <script>
+function setupMultiPicker(selector, object_type, placeholder) {
+
+  if (typeof(selector) == 'string') {
+    selector = jQuery(selector);
+  }
+
+  var optionsForSelect = {
+    placeholder: placeholder,
+    minimumInputLength: 0,
+    multiple: false,
+    quietMillis: 100,
+    ajax: {
+      url: function() { return '<?php echo $this->ctm_host ?>/api/v1/lookup.json?auth_token=<?php echo $ctm_api_auth_token; ?>' },
+      dataType: 'json',
+      data: function(term, page) {
+        return { search: term, object_type: object_type, page: page };
+      },
+      results: function (data, page) {
+        var more = (page * data.per_page) < data.total;
+        return {results: data.results.map(function(res) {
+          return {text: res.name, id: res.id};
+        }), more: more};
+      },
+    },
+    initSelection: function(element, callback) {
+      var val = jQuery(element).val();
+      var ids = decodeURIComponent(val).toString().split(",");
+      if (ids.length) {
+        jQuery.post("<?php echo $this->ctm_host ?>/api/v1/lookupids.json?idstr=1&amp;auth_token=<?php echo $ctm_api_auth_token; ?>", {object_type: object_type, ids: ids}, function(res) {
+          var r = res.results[0];
+          callback({id: r.id, text: r.name});
+        },'json');
+      }
+    }
+  };
+
+  return selector.select2(optionsForSelect)
+}
+function readyForm(id) {
+  console.log("ready:", id);
+  jQuery.get("<?php echo $this->ctm_host ?>/api/v1/form_reactors/" + id, {auth_token: "<?php echo $ctm_api_auth_token; ?>"}, function(res) {
+    console.log("data:", res);
+  });
+}
+      jQuery(function() {
+        setupMultiPicker("input.formreactor", "form_reactor", "Choose Form").on("change", function(evt) {
+          readyForm(evt.val);
+          console.log("form:", evt.val, evt.added, evt.removed);
+        }).on("select2-loaded", function(evt) {
+          console.log("form:", evt.items);
+        });
+        var id = jQuery("input.formreactor").val();
+        if (id) { readyForm(id); }
+      });
+    </script>
+<?php
     }
   }
 
@@ -139,12 +290,12 @@ class CallTrackingMetrics {
   function refresh_stats($ctm_api_auth_token) {
     $ctm_api_auth_account   = get_option('ctm_api_auth_account');
 
-     // //cdnjs.cloudflare.com/ajax/libs/highcharts/2.3.5/highcharts.js
+  // //cdnjs.cloudflare.com/ajax/libs/highcharts/2.3.5/highcharts.js
  // $ed = date('Y-m-d');
  // $sd = date('Y-m-d', strtotime('-7 days'));
 
-    $stats_url = "https://{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
-    //error_log($stats_url);
+    $stats_url = "{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
+ //error_log($stats_url);
 
     $req = new WP_Http;
     $res = $req->request($stats_url, array('method' => 'GET'));
@@ -168,27 +319,36 @@ class CallTrackingMetrics {
     } elseif ($ctm_api_auth_token && $ctm_api_auth_expires && strtotime($ctm_api_auth_expires) < time()) {
       $this->refresh_token($ctm_api_key, $ctm_api_secret);
     }
+    return $ctm_api_auth_token;
   }
   function refresh_token($ctm_api_key, $ctm_api_secret) {
-    $url = "https://{$this->ctm_host}/api/v1/authentication.json";
+    $url = "{$this->ctm_host}/api/v1/authentication.json";
     $args = array("token" => $ctm_api_key, "secret" => $ctm_api_secret);
-    $req = new WP_Http;//wp_remote_post($url, $args);
+    $req = new WP_Http;
     $res = $req->request($url, array('method' => 'POST', 'body' => $args));
-    $data = json_decode($res['body']);
-    if ($data->success) {
-      $ctm_api_auth_token = $data->token;
-      $ctm_api_auth_expires = $data->expires;
-      $ctm_api_auth_account = $data->first_account->id;
-
-      update_option('ctm_api_auth_token', $ctm_api_auth_token);
-      update_option('ctm_api_auth_expires', $ctm_api_auth_expires);
-      update_option('ctm_api_auth_account', $ctm_api_auth_account);
-      delete_option('ctm_api_connect_failed');
-    } else {
-      update_option('ctm_api_connect_failed', $res);
+    if (is_wp_error($res)) {
+      error_log("error connecting to ctm");
+      update_option('ctm_api_connect_failed', "Error connecting please double check your API credentials");
       delete_option('ctm_api_auth_token');
       delete_option('ctm_api_auth_expires');
       delete_option('ctm_api_auth_account');
+    } else if ($res && isset($res['body'])) {
+      $data = json_decode($res['body']);
+      if (isset($data) && $data && $data->success) {
+        $ctm_api_auth_token = $data->token;
+        $ctm_api_auth_expires = $data->expires;
+        $ctm_api_auth_account = $data->first_account->id;
+
+        update_option('ctm_api_auth_token', $ctm_api_auth_token);
+        update_option('ctm_api_auth_expires', $ctm_api_auth_expires);
+        update_option('ctm_api_auth_account', $ctm_api_auth_account);
+        delete_option('ctm_api_connect_failed');
+      } else {
+        update_option('ctm_api_connect_failed', $res);
+        delete_option('ctm_api_auth_token');
+        delete_option('ctm_api_auth_expires');
+        delete_option('ctm_api_auth_account');
+      }
     }
   }
 
