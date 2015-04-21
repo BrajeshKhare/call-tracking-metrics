@@ -4,7 +4,7 @@ Plugin Name: CallTrackingMetrics
 Plugin URI: https://calltrackingmetrics.com/
 Description: Easily manage and track phone calls to your website with CallTrackingMetrics - Call Tracking Plugin for WordPress
 Author: Todd Fisher, Bob Graw
-Version: 0.4.3
+Version: 0.4.4
 Author URI: https://calltrackingmetrics.com/
 */
 
