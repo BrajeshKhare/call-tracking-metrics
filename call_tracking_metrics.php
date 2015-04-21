@@ -4,7 +4,7 @@ Plugin Name: Call Tracking Metrics
 Plugin URI: https://calltrackingmetrics.com/
 Description: Easily manage and track phone calls to your website with Call Tracking Metrics
 Author: Todd Fisher, Bob Graw
-Version: 0.4.1
+Version: 0.4.2
 Author URI: https://calltrackingmetrics.com/
 */
 
@@ -12,8 +12,15 @@ class CallTrackingMetrics {
   function CallTrackingMetrics() {
     add_action('wp_print_scripts', array(&$this, "call_tracking_metrics_script"), 10);
     add_action('admin_init', array(&$this, 'init_plugin'));
+    add_action('init', array(&$this, 'form_init'));
     add_action('admin_menu', array(&$this, 'attach_call_tracking_configuration'));
-    $this->ctm_host = "https://api.calltrackingmetrics.com";
+    if (isset($_ENV["CTM_BLOG_TEST_URL"])) {
+      $this->ctm_host = $_ENV["CTM_BLOG_TEST_URL"];
+      $this->request_options = array('sslverify' => false); # , 'sslcertificates' => false);
+    } else {
+      $this->ctm_host = "https://api.calltrackingmetrics.com";
+      $this->request_options = array();
+    }
   }
 
   // quick link in the plugin folder
@@ -42,11 +49,96 @@ class CallTrackingMetrics {
     add_filter('admin_head', array(&$this, 'add_javascripts'));
     add_filter('plugin_action_links', array(&$this, 'settings_link'), 10, 2 );
 
-    // hook into contact form 7
-    add_filter('wpcf7_add_meta_boxes', array(&$this, 'add_contact_form7_options_panels'));
-    //add_action('load-toplevel_page_wpcf7', array(&$this, 'hook_into_contact_form7_actions'));
-    add_filter('wpcf7_save_contact_form', array(&$this, 'hook_wpcf7_save_contact_form'));
-    add_filter('wpcf7_contact_form_properties', array(&$this, 'hook_wpcf7_contact_form_properties'));
+    if ($this->is_api_enabled()) { // hook into contact form 7
+      add_filter('wpcf7_add_meta_boxes', array(&$this, 'add_contact_form7_options_panels'));
+      add_filter('wpcf7_save_contact_form', array(&$this, 'hook_wpcf7_save_contact_form'));
+      add_filter('wpcf7_contact_form_properties', array(&$this, 'hook_wpcf7_contact_form_properties'));
+    }
+  }
+
+  function form_init() {
+    if ($this->is_api_enabled()) { // hook into contact form 7
+      add_action("wpcf7_before_send_mail", array(&$this, 'hook_wpcf7_trigger_form_post'), 1, 1);
+      add_filter("wpcf7_form_elements", array(&$this, 'hook_wpcf7_form_element_visitor_inject'), 10, 1);
+    }
+  }
+
+  function is_api_enabled() {
+    $ctm_api_key    = get_option('ctm_api_key'); 
+    $ctm_api_secret = get_option('ctm_api_secret'); 
+    return ($ctm_api_secret && $ctm_api_key);
+  }
+
+  function hook_wpcf7_form_element_visitor_inject($elements) {
+    $digits = get_option("ctm_form_number");
+    # inject script to add visitor_sid to the form has a hidden input field
+    $script = "(window.__ctm_loaded || []).push(function() { var trackingNumber = \"$digits\";" .
+              "  var submit = jQuery(jQuery('.wpcf7-form-control.wpcf7-submit')[0]); " .
+              "  submit.after('<input type=\"hidden\" name=\"visitor_sid\" value=\"' + __ctm.config.sid + '\"/>');" .
+              "  submit.closest('form').submit(function(e) { try {window.ptTrackEvent(\"\", trackingNumber, \"form\"); __ctm.tracker.popQueue(); } catch(e) { console.log(e); } }); " .
+              "  submit.click(function(e) { try {window.ptTrackEvent(\"\", trackingNumber, \"form\"); __ctm.tracker.popQueue(); } catch(e) { console.log(e); } }); " .
+              "})";
+    return $elements . "<script>$script</script>";
+  }
+
+
+  // send the FormReactor 
+  function hook_wpcf7_trigger_form_post($contact_form) {
+
+    $field_map   = get_option("ctm_form_{$contact_form->id}");
+    $submission  = WPCF7_Submission::get_instance();
+    $properties  = $contact_form->get_properties();
+    $data        = $submission->get_posted_data();
+
+    $email_field = $field_map["email_field"];
+    $name_field  = $field_map["name_field"];
+    $phone_field = $field_map["phone_field"];
+    $formreactor = $field_map["formreactor"];
+
+    $form_data = array();
+    if (isset($data[$name_field])) {
+      $form_data['caller_name']   = $data[$name_field];
+    }
+
+    $form_data['country_code']  = '1';
+    $form_data['phone_number']  = $data[$phone_field];
+
+    if (isset($data['visitor_sid'])) {
+      $form_data['visitor_sid']   = $data['visitor_sid']; 
+    }
+
+    if (isset($data[$email])) {
+      $form_data['email'] = $data[$email];
+    }
+
+    foreach($data as $key => $value) {
+      if (!preg_match("/^_wpcf7|^_wpnonce|visitor_sid/", $key) && $key != $email_field && $key != $name_field && $key != $phone_field && $key != $formreactor) {
+        $form_data["custom_$key"] = $value;
+      }
+    }
+
+    $this->post_form($formreactor, $form_data);
+  }
+
+  function post_form($formreactor, $post_data) {
+#   {"visitor_sid"=>"5531086600048b6f1453145a",
+#    "form_reactor"=>{"caller_name"=>"foo bar",
+#                     "country_code"=>"1",
+#                     "phone_number"=>"dddddddddd",
+#                     "email"=>"aaaa@example.com"},
+#    "field"=>{"custom"=>"foo bar"}}
+    $form_url       = "{$this->ctm_host}/api/v1/formreactor/$formreactor";
+    $req            = new WP_Http;
+    $ctm_api_key    = get_option('ctm_api_key'); 
+    $ctm_api_secret = get_option('ctm_api_secret'); 
+    $headers        = array('Authorization' => 'Basic ' . base64_encode( "$ctm_api_key:$ctm_api_secret"));
+    $post_request   = array_merge($this->request_options,
+                                  array('method' => 'POST',
+                                        'headers' => $headers,
+                                        'user-agent' => "Wordpress Plugin",
+                                        'body' => $post_data,
+                                        'blocking' => false));
+    $res            = $req->request($form_url, $post_request);
   }
 
   function hook_wpcf7_contact_form_properties($properties) {
@@ -57,26 +149,71 @@ class CallTrackingMetrics {
   }
 
   function hook_wpcf7_save_contact_form($contact_form) {
-    error_log("save with ctm:" . $contact_form->id);
-    ob_start();
-    var_dump($_POST);
-    $a=ob_get_contents();
-    ob_end_clean();
-    error_log("post fields: " . $a);
     $ctm_caller_number_field = $contact_form->id . "-caller_number";
+    $ctm_caller_name_field   = $contact_form->id . "-name_field";
+    $ctm_caller_email_field  = $contact_form->id . "-email_field";
     $ctm_formreactor_field   = $contact_form->id . "-formreactor";
-    $phone_field = $_POST[$ctm_caller_number_field];
-    $fromreactor = $_POST[$ctm_formreactor_field];
-    $properties = $contact_form->get_properties();
+    $email_field             = $_POST[$ctm_caller_email_field];
+    $name_field              = $_POST[$ctm_caller_name_field];
+    $phone_field             = $_POST[$ctm_caller_number_field];
+    $formreactor             = $_POST[$ctm_formreactor_field];
+    $properties              = $contact_form->get_properties();
+
+    $properties["ctm_formreactor"]["email_field"] = $email_field;
+    $properties["ctm_formreactor"]["name_field"]  = $name_field;
     $properties["ctm_formreactor"]["phone_field"] = $phone_field;
-    $properties["ctm_formreactor"]["fromreactor"] = $fromreactor;
+    $properties["ctm_formreactor"]["formreactor"] = $formreactor;
+
+    $data_to_save = array("phone_field" => $phone_field,
+                          "name_field"  => $name_field,
+                          "email_field" => $email_field,
+                          "formreactor" => $formreactor);
+
+
+    update_option("ctm_form_{$contact_form->id}", $data_to_save);
     $contact_form->set_properties($properties);
+
+    $this->update_formreactor_data($formreactor);
+  }
+
+  # fetch data about the FormReactor and keep it local to show in the form
+  function update_formreactor_data($formreactor) {
+    $ctm_api_auth_account = get_option('ctm_api_auth_account');
+    $ctm_api_key    = get_option('ctm_api_key'); 
+    $ctm_api_secret = get_option('ctm_api_secret'); 
+    $headers        = array('Authorization' => 'Basic ' . base64_encode( "$ctm_api_key:$ctm_api_secret"));
+    $form_url = "{$this->ctm_host}/api/v1/form_reactor/$formreactor.json";
+    $req      = new WP_Http;
+    $res      = $req->request($form_url,  array_merge($this->request_options, array('method' => 'GET', 'headers' => $headers)));
+      
+    # need this to track against the visitor data
+    if (isset($res) && is_array($res)) {
+      $data = $res['body'];
+      if (isset($data)) {
+        $form               = json_decode($data, true);
+        $tracking_number_id = $form['tracking_number']['id'];
+        $number_url         = "{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/numbers/$tracking_number_id.json";
+        $req                = new WP_Http;
+        $res                = $req->request($number_url,  array_merge($this->request_options, array('method' => 'GET', 'headers' => $headers)));
+        if (isset($res) && is_array($res)) {
+          $data = $res['body'];
+          if (isset($data)) {
+            $number  = json_decode($data, true);
+            $split   = $number['split'];
+            $country = array_shift($split);
+            $digits  = implode($split);
+            # we have no way to get to the contact form 7 form on the output so this is global...
+            update_option("ctm_form_number", $digits);
+            update_option("ctm_form_country_prefix", $country);
+          }
+        }
+      }
+    }
   }
 
   function hook_into_contact_form7_actions() {
     $action = wpcf7_current_action();
 
-    error_log('ctm-hook:' . $action . "]");
     if ( 'save' == $action ) {
     }
     if ( 'copy' == $action ) {
@@ -91,26 +228,45 @@ class CallTrackingMetrics {
 
   function show_contact_form7_panel($post) { 
     $id = $post->id;
-    $fromreactor = $post->ctm_formreactor;
+    $formreactor = $post->ctm_formreactor;
+    $ctm_api_auth_token = $this->check_token();
 ?>
     <div class="ctm-fields">
+<?php if ($ctm_api_auth_token) { ?>
       <div class="half-left">
         <div class="ctm-field">
+          <label for="<?php echo $id; ?>-name_field"><?php echo esc_html( __( 'Contact Name:', 'contact-form-7' ) ); ?></label><br />
+          <input placeholder="your-name" type="text" id="<?php echo $id; ?>-name_field" name="<?php echo $id; ?>-name_field" class="wide" size="32" value="<?php echo esc_attr( $formreactor['name_field'] ); ?>" />
+          <cite>e.g. the field name used to capture the leads name as it will appear in the call log</cite>
+        </div>
+        <div class="ctm-field">
+          <label for="<?php echo $id; ?>-email_field"><?php echo esc_html( __( 'Contact Email:', 'contact-form-7' ) ); ?></label><br />
+          <input placeholder="your-name" type="text" id="<?php echo $id; ?>-email_field" name="<?php echo $id; ?>-email_field" class="wide" size="32" value="<?php echo esc_attr( $formreactor['email_field'] ); ?>" />
+          <cite>e.g. the field name used to capture the leads name as it will appear in the call log</cite>
+        </div>
+        <div class="ctm-field">
           <label for="<?php echo $id; ?>-caller_number"><?php echo esc_html( __( 'Phone Number:', 'contact-form-7' ) ); ?></label><br />
-          <input placeholder="[your-phone-number]" type="text" id="<?php echo $id; ?>-caller_number" name="<?php echo $id; ?>-caller_number" class="wide" size="32" value="<?php echo esc_attr( $fromreactor['phone_field'] ); ?>" />
+          <input placeholder="your-phone-number" type="text" id="<?php echo $id; ?>-caller_number" name="<?php echo $id; ?>-caller_number" class="wide" size="32" value="<?php echo esc_attr( $formreactor['phone_field'] ); ?>" />
           <cite>e.g. the field name used to capture the leads phone number</cite>
         </div>
         <div class="pseudo-hr"></div>
         <div class="ctm-field">
           <label for="<?php echo $id; ?>-formreactor"><?php echo esc_html( __( 'FormReactor', 'contact-form-7' ) ); ?></label><br />
-          <input type="text" id="<?php echo $id; ?>-formreactor" name="<?php echo $id; ?>-formreactor" class="wide formreactor" size="68" value="<?php echo esc_attr( $fromreactor['fromreactor'] ); ?>" />
+          <input type="text" id="<?php echo $id; ?>-formreactor" name="<?php echo $id; ?>-formreactor" class="wide formreactor" size="68" value="<?php echo esc_attr( $formreactor['formreactor'] ); ?>" />
           <cite>the CallTrackingMetrics FormReactor to associate with this form.</cite>
         </div>
         <div class="pseudo-hr"></div>
       </div>
+<?php } else { ?>
+      <div class="half-left">
+        <strong>to use this integration you must first provide your Account API keys under the settings integration panel in WordPress.</strong>
+        <div class="pseudo-hr"></div>
+      </div>
+<?php } ?>
       <div class="half-right">
         <p>
-          FormReactor integration allows you to use ContactForm7 and attach your form to a CallTrackingMetrics FormReactor call flow.  This allows you to capture form leads into your call log an optionally trigger a phone call either to a sales agent or to the customer filling out the form.
+          FormReactor integration allows you to use ContactForm7 and attach your form to a CallTrackingMetrics FormReactor call flow. 
+          This allows you to capture form leads into your call log an optionally trigger a phone call either to a sales agent or to the customer filling out the form.
         </p>
         <p>
           To configure the FormReactor integration you must capture the leads phone number as a required field.
@@ -202,7 +358,9 @@ function readyForm(id) {
   function attach_call_tracking_configuration() {
     if ( current_user_can( 'manage_options' ) ) {
       add_options_page('CallTrackingMetrics', 'CallTrackingMetrics', 'administrator', __FILE__, array(&$this,'settings_page'));
-      add_action('wp_dashboard_setup', array(&$this, 'install_dash_widget'));
+      if ($this->is_api_enabled()) {
+        add_action('wp_dashboard_setup', array(&$this, 'install_dash_widget'));
+      }
     }
   }
 
@@ -212,19 +370,20 @@ function readyForm(id) {
 
   // show a snapshot of recent call activity and aggregate stats
   function admin_dashboard_plugin() {
-    $ctm_api_key = get_option('ctm_api_key'); 
-    $ctm_api_secret = get_option('ctm_api_secret'); 
-    if (!$ctm_api_secret || !$ctm_api_key) {
+    if (!$this->is_api_enabled()) {
       ?>
         <h4>API keys Must be installed first</h4>
         <p>Install API keys under the settings menu</p>
       <?php
       return;
     }
-    $stats = get_option('ctm_api_stats');
-    $dates = array();
-    $end = date('Y-m-d');
-    $count = 0;
+    $ctm_api_key    = get_option('ctm_api_key'); 
+    $ctm_api_secret = get_option('ctm_api_secret'); 
+    $stats          = get_option('ctm_api_stats');
+    $dates          = array();
+    $end            = date('Y-m-d');
+    $count          = 0;
+
     for ($count = 0; $count <= 30; ++$count) {
       array_push($dates, date('Y-m-d', strtotime('-' . $count . ' days')));
     }
@@ -250,25 +409,30 @@ function readyForm(id) {
         var startDate = $("#ctm_dash .ctm-dash").attr("data-start");
         var endDate = $("#ctm_dash .ctm-dash").attr("data-today");
         var categories = $.parseJSON($("#ctm_dash .ctm-dash").attr("data-dates")).reverse();
+
         $("#ctm_dash .ctm-dash").html(dashTemplate(stats));
         var data = [], calls = stats.stats.calls;
         for (var i = 0, len = categories.length; i < len; ++i) {
-          data.push(0);
+          data.push(0); // zero fill
         }
         for (var c in calls) {
-          data[categories.indexOf(c)] = calls[c];
+          data[categories.indexOf(c)] = calls[c][0];
         }
-        var series = [{name: 'Calls', data: data}];
+        var series = [{
+                        name: 'Calls', data: data,
+                        pointInterval: 24 * 3600 * 1000,
+                        pointStart: Date.parse(categories[0])
+                      }];
         var chart = new Highcharts.Chart({
           credits: { enabled: false },
           chart: { type: 'column', renderTo: $("#ctm_dash .stats").get(0), plotBackgroundColor:null, backgroundColor: 'transparent' },
           yAxis: { min: 0, title: { text: "Calls" } },
           title: { text: 'Last 30 Days' },
           legend: { enabled: false },
-          tooltip: { formatter: function() { return '<b>'+ this.x +'</b><br/> '+ this.y; } },
+          //tooltip: { formatter: function() { return '<b>'+ this.x +'</b><br/> '+ this.y; } },
           xAxis: {
-            categories: categories,
-            labels: { enabled:false }
+            type: 'datetime',
+            minRange: 30 * 24 * 3600000 // last 30 days
           },
           series: series
         });
@@ -295,10 +459,9 @@ function readyForm(id) {
  // $sd = date('Y-m-d', strtotime('-7 days'));
 
     $stats_url = "{$this->ctm_host}/api/v1/accounts/$ctm_api_auth_account/reports.json?auth_token=$ctm_api_auth_token";
- //error_log($stats_url);
 
     $req = new WP_Http;
-    $res = $req->request($stats_url, array('method' => 'GET'));
+    $res = $req->request($stats_url, array_merge($this->request_options, array('method' => 'GET')));
     if (isset($res) && is_array($res)) {
       $stats = $res['body'];
       if (isset($stats)) {
@@ -321,13 +484,14 @@ function readyForm(id) {
     }
     return $ctm_api_auth_token;
   }
+
   function refresh_token($ctm_api_key, $ctm_api_secret) {
     $url = "{$this->ctm_host}/api/v1/authentication.json";
     $args = array("token" => $ctm_api_key, "secret" => $ctm_api_secret);
     $req = new WP_Http;
-    $res = $req->request($url, array('method' => 'POST', 'body' => $args));
+    $res = $req->request($url, array_merge($this->request_options, array('method' => 'POST', 'body' => $args)));
     if (is_wp_error($res)) {
-      error_log("error connecting to ctm");
+      error_log("error connecting to ctm {} see: {$this->ctm_host}");
       update_option('ctm_api_connect_failed', "Error connecting please double check your API credentials");
       delete_option('ctm_api_auth_token');
       delete_option('ctm_api_auth_expires');
@@ -370,22 +534,33 @@ function readyForm(id) {
       <tr valign="top">
         
         <td>
-          <strong><label for="call_track_account_script"><?php _e("Call Tracking Script"); ?></label></strong><br/>
+          <strong><label for="call_track_account_script"><?php _e("CallTrackingMetrics Script Tag"); ?></label></strong><br/>
           <textarea style="font-size:12px" cols="58" rows="10" id="call_track_account_script" name="call_track_account_script"><?php echo get_option('call_track_account_script'); ?></textarea>
           <cite>Embed the exact code snipet provided here: <a href="https://calltrackingmetrics.com/embed_code">embed code</a></cite>
         </td>
         <td style="width:100%;vertical-align:middle">
           <p>
-            This is the embed script provided by call tracking metrics.
+            This is the embed script provided by CallTrackingMetrics.
           </p>
+          <p>Once you have the embed code saved in WP - you can control your tracking sources <a href="https://calltrackingmetrics.com/sources">here</a> and view your reports <a href="https://calltrackingmetrics.com/reports/overview">here</a>.
         </td>
       </tr>
       <tr valign="top">
         <td>
-          <?php if (get_option('ctm_api_auth_token')) { ?>
+          <?php if ($this->is_api_enabled()) { ?>
           <div style="background-color:#8cff8b;border-color:#fc0;padding:12px;text-align:center;font-size:18px;">
             API keys verfied
           </div>
+          <?php } else if (get_option('ctm_api_connect_failed')) { ?>
+          <div style="background-color:red;border-color:red;padding:12px;text-align:center;font-size:18px;color:#fff">
+            API keys invalid
+          </div>
+          <?php } else { ?>
+          <div style="background-color:#F7D054;border-color:#F7e084;padding:12px;text-align:center;font-size:18px;color:#fff">
+            API not enabled
+          </div>
+          <br/>
+          <br/>
           <?php } ?>
           <strong><label for="ctm_api_key"><?php _e("CTM API Key"); ?></label></strong><br/>
           <input class="regular-text code" type="text" id="ctm_api_key" name="ctm_api_key" value="<?php echo get_option('ctm_api_key'); ?>"/>
@@ -397,11 +572,12 @@ function readyForm(id) {
           <cite>Get your API keys from "settings" -&gt; "account settings"</cite>
         </td>
         <td style="width:100%;vertical-align:middle">
-          <p>
-            API keys will be used to populate stats in your Wordpress Dashboard
-          </p>
+          <h3>API integration provides</h3>
+          <ul>
+            <li>&bull; Populate stats in your Wordpress Dashboard.</li>
+            <li>&bull; Provide FormReactor integration with Contact Form 7</li>
+          </ul>
           <h4>Don't have an account?  <a href="https://calltrackingmetrics.com/plans">Pricing &amp; Sign up</a> now it only takes a few minutes.</h4>
-          <p>Once you have the embed code saved in WP - you can control your tracking sources <a href="https://calltrackingmetrics.com/sources">here</a> and view your reports <a href="https://calltrackingmetrics.com/reports/overview">here</a>.
         </td>
       </tr>
 
