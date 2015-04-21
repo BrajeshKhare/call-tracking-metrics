@@ -1,10 +1,10 @@
 <?php
 /*
-Plugin Name: Call Tracking Metrics
+Plugin Name: CallTrackingMetrics
 Plugin URI: https://calltrackingmetrics.com/
-Description: Easily manage and track phone calls to your website with Call Tracking Metrics
+Description: Easily manage and track phone calls to your website with CallTrackingMetrics - Call Tracking Plugin for WordPress
 Author: Todd Fisher, Bob Graw
-Version: 0.4.2
+Version: 0.4.3
 Author URI: https://calltrackingmetrics.com/
 */
 
@@ -72,7 +72,7 @@ class CallTrackingMetrics {
   function hook_wpcf7_form_element_visitor_inject($elements) {
     $digits = get_option("ctm_form_number");
     # inject script to add visitor_sid to the form has a hidden input field
-    $script = "(window.__ctm_loaded || []).push(function() { var trackingNumber = \"$digits\";" .
+    $script = "(window.__ctm_loaded = (window.__ctm_loaded || [])).push(function() { var trackingNumber = \"$digits\";" .
               "  var submit = jQuery(jQuery('.wpcf7-form-control.wpcf7-submit')[0]); " .
               "  submit.after('<input type=\"hidden\" name=\"visitor_sid\" value=\"' + __ctm.config.sid + '\"/>');" .
               "  submit.closest('form').submit(function(e) { try {window.ptTrackEvent(\"\", trackingNumber, \"form\"); __ctm.tracker.popQueue(); } catch(e) { console.log(e); } }); " .

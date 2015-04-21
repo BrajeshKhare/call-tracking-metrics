@@ -42,6 +42,9 @@ The plugin settings page can be found under "Settings" ->
 
 == Changelog ==
 
+= 0.4.3 =
+* visitor data tracking update
+
 = 0.4.2 =
 * contact form 7 integration
 
