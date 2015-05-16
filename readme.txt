@@ -3,8 +3,8 @@ Contributors: CallTrackingMetrics
 Donate link: http://calltrackingmetrics.com/
 Tags: analytics, call tracking, marketing optimization metrics
 Requires at least: 3.0.0
-Tested up to: 3.9.1
-Stable tag: 0.3.8
+Tested up to: 4.1.2
+Stable tag: 0.4.5
 
 CallTrackingMetrics WP plugin
 
@@ -38,8 +38,24 @@ The plugin settings page can be found under "Settings" ->
 * Track calls from a full range of marketing sources
 * Know how many of your calls are repeat
 * Discover which marketing sources provide the best ROI
+* Contact Form 7 Integration
 
 == Changelog ==
+
+= 0.4.5 =
+* fix admin settings link
+
+= 0.4.4 =
+* release updated plugin
+
+= 0.4.3 =
+* visitor data tracking update
+
+= 0.4.2 =
+* contact form 7 integration
+
+= 0.4.1 =
+* better handling of user input errors when using the API keys
 
 = 0.3.8 =
 * text updates
